@@ -1,0 +1,18 @@
+# D02: PostgreSQL local por integrante. Uso: docker compose up -d
+# No sustituye la base compartida al desplegar; es solo desarrollo local.
+services:
+  postgres:
+    image: postgres:17
+    container_name: ebr_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ebr
+      POSTGRES_PASSWORD: ebr_dev_password
+      POSTGRES_DB: ebr_dev
+    ports:
+      - '5432:5432'
+    volumes:
+      - ebr_pg_data:/var/lib/postgresql/data
+
+volumes:
+  ebr_pg_data:

@@ -1,0 +1,232 @@
+// Modelo lógico inicial (PROPUESTA, ver D06/D07 en docs/plan-arquitectura).
+// Las tablas y restricciones físicas se ajustarán antes de la entrega final.
+// Convención: identificadores UUID estables; nunca la posición de una fila.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Identidad / empresas (P1) ----------
+
+enum RolInstitucional {
+  ADMINISTRADOR
+  COORDINADOR
+  TECNICO_EVALUADOR
+}
+
+enum EstadoUsuario {
+  pendiente
+  activo
+  suspendido
+}
+
+model Usuario {
+  id               String            @id @default(uuid())
+  nombre           String
+  email            String            @unique
+  hashContrasena   String
+  estado           EstadoUsuario     @default(pendiente)
+  rolInstitucional RolInstitucional?
+  creadoEn         DateTime          @default(now())
+
+  membresias        Membresia[]
+  asignacionesComoEvaluador Asignacion[] @relation("EvaluadorAsignaciones")
+
+  @@map("usuarios")
+}
+
+model Empresa {
+  id           String   @id @default(uuid())
+  rnc          String   @unique
+  razonSocial  String
+  creadoEn     DateTime @default(now())
+
+  establecimientos Establecimiento[]
+  membresias       Membresia[]
+
+  @@map("empresas")
+}
+
+model Establecimiento {
+  id         String   @id @default(uuid())
+  empresaId  String
+  nombre     String
+  direccion  String
+  actividad  String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  casos   Caso[]
+
+  @@map("establecimientos")
+}
+
+enum RolMembresia {
+  ADMINISTRADOR_EMPRESA
+  USUARIO_DELEGADO
+}
+
+model Membresia {
+  id         String       @id @default(uuid())
+  usuarioId  String
+  empresaId  String
+  rol        RolMembresia
+  autorizada Boolean      @default(false)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([usuarioId, empresaId])
+  @@map("membresias")
+}
+
+// ---------- Casos / agenda (P2 - este módulo) ----------
+
+enum TipoOrigen {
+  solicitud
+  programacion
+  alerta
+  denuncia
+}
+
+model Origen {
+  id        String     @id @default(uuid())
+  tipo      TipoOrigen
+  creadoEn  DateTime   @default(now())
+
+  solicitud Solicitud?
+  casos     Caso[]
+
+  @@map("origenes")
+}
+
+enum EstadoSolicitud {
+  borrador
+  enviada
+}
+
+model Solicitud {
+  id                 String          @id @default(uuid())
+  origenId           String          @unique
+  empresaId          String
+  establecimientoId  String?
+  motivo             String
+  detalle            String?
+  estado             EstadoSolicitud @default(borrador)
+  creadaPor          String
+  creadaEn           DateTime        @default(now())
+  enviadaEn          DateTime?
+
+  origen Origen @relation(fields: [origenId], references: [id])
+
+  @@map("solicitudes")
+}
+
+enum EstadoCaso {
+  en_clasificacion
+  pendiente_asignacion
+  asignado
+  en_evaluacion
+  en_revision
+  cerrado
+  cancelado
+  remitido
+}
+
+model Caso {
+  id                String     @id @default(uuid())
+  origenId          String
+  establecimientoId String?
+  estado            EstadoCaso @default(en_clasificacion)
+  version           Int        @default(0) // resourceVersion, control de conflictos (409)
+  creadoEn          DateTime   @default(now())
+
+  origen          Origen           @relation(fields: [origenId], references: [id])
+  establecimiento Establecimiento? @relation(fields: [establecimientoId], references: [id])
+  asignaciones    Asignacion[]
+  evaluaciones    Evaluacion[]
+  historialEstado HistorialEstadoCaso[]
+
+  @@map("casos")
+}
+
+model HistorialEstadoCaso {
+  id         String   @id @default(uuid())
+  casoId     String
+  estadoDe   EstadoCaso
+  estadoA    EstadoCaso
+  motivo     String?
+  autorId    String
+  creadoEn   DateTime @default(now())
+
+  caso Caso @relation(fields: [casoId], references: [id])
+
+  @@map("historial_estado_caso")
+}
+
+enum EstadoAsignacion {
+  vigente
+  reemplazada
+  cancelada
+}
+
+model Asignacion {
+  id           String           @id @default(uuid())
+  casoId       String
+  evaluadorId  String
+  inicio       DateTime
+  fin          DateTime
+  zonaHoraria  String           @default("America/Santo_Domingo")
+  estado       EstadoAsignacion @default(vigente)
+  version      Int              @default(0)
+  motivoCambio String?
+  creadoEn     DateTime         @default(now())
+
+  caso      Caso    @relation(fields: [casoId], references: [id])
+  evaluador Usuario @relation("EvaluadorAsignaciones", fields: [evaluadorId], references: [id])
+
+  @@map("asignaciones")
+}
+
+// ---------- Inspección (P3/P4 - referenciado para integridad relacional) ----------
+
+enum EstadoEvaluacion {
+  asignada
+  en_curso
+  en_revision
+  devuelta
+  aprobada
+  cerrada
+}
+
+model Evaluacion {
+  id            String           @id @default(uuid())
+  casoId        String
+  estado        EstadoEvaluacion @default(asignada)
+  formularioVer Int?
+  reglasVer     Int?
+  version       Int              @default(0)
+  creadoEn      DateTime         @default(now())
+
+  caso Caso @relation(fields: [casoId], references: [id])
+
+  @@map("evaluaciones")
+}
+
+// ---------- Auditoría (servicio compartido) ----------
+
+model EventoAuditoria {
+  id        String   @id @default(uuid())
+  actorId   String
+  accion    String
+  entidad   String
+  entidadId String
+  detalle   Json?
+  creadoEn  DateTime @default(now())
+
+  @@map("eventos_auditoria")
+}
