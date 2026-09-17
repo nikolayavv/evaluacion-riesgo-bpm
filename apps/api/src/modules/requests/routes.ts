@@ -42,19 +42,27 @@ requestsRouter.post('/', async (req: AuthedRequest, res) => {
 
 // PATCH /api/requests/:id - edita mientras está en borrador
 requestsRouter.patch('/:id', async (req: AuthedRequest, res) => {
+  const idCheck = z.string().uuid().safeParse(req.params.id);
+
+  if (!idCheck.success) {
+    return res.status(422).json({ error: 'id_invalido' });
+  }
+
+  const id = idCheck.data;
+
   const parsed = ActualizarSolicitudInput.safeParse(req.body);
   if (!parsed.success) {
     return res.status(422).json({ error: 'datos_invalidos', detalle: parsed.error.flatten() });
   }
 
-  const existente = await prisma.solicitud.findUnique({ where: { id: req.params.id } });
+  const existente = await prisma.solicitud.findUnique({ where: { id } });
   if (!existente) return res.status(404).json({ error: 'no_encontrado' });
   if (existente.estado !== 'borrador') {
     return res.status(409).json({ error: 'estado_invalido', detalle: 'Solo se edita en borrador' });
   }
 
   const actualizada = await prisma.solicitud.update({
-    where: { id: req.params.id },
+    where: { id },
     data: parsed.data,
   });
   res.json(actualizada);
@@ -65,9 +73,12 @@ requestsRouter.post('/:id/submit', async (req: AuthedRequest, res) => {
   const idSchema = z.string().uuid();
   const idCheck = idSchema.safeParse(req.params.id);
   if (!idCheck.success) return res.status(422).json({ error: 'id_invalido' });
+  const id = idCheck.data;
 
   const resultado = await prisma.$transaction(async (tx) => {
-    const solicitud = await tx.solicitud.findUnique({ where: { id: req.params.id } });
+    const solicitud = await tx.solicitud.findUnique({
+      where: { id },
+    });
     if (!solicitud) return { status: 404 as const, body: { error: 'no_encontrado' } };
 
     // Idempotencia: si ya fue enviada, devolver el caso existente sin duplicar (D09, escenario de aceptación).
@@ -87,7 +98,7 @@ requestsRouter.post('/:id/submit', async (req: AuthedRequest, res) => {
     });
 
     const solicitudActualizada = await tx.solicitud.update({
-      where: { id: solicitud.id },
+      where: { id },
       data: { estado: 'enviada', enviadaEn: new Date() },
     });
 

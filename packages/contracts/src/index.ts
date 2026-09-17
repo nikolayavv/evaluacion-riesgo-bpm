@@ -1,2 +1,2 @@
-export * from './identity';
-export * from './casos';
+export * from './identity.js';
+export * from './casos.js';

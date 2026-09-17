@@ -142,3 +142,8 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 .DS_Store
+
+# codex
+AGENTS.md
+docs/contexto-proyecto.md
+docs/progreso.md

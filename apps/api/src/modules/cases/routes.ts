@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { CrearAsignacionInput, CancelarAsignacionInput, DecisionOrigenInput } from '@ebr/contracts';
 import { prisma } from '../../lib/prisma.js';
 import { requireAuth, type AuthedRequest } from '../../middleware/auth.js';
+import { z } from 'zod';
 
 export const casesRouter = Router();
 casesRouter.use(requireAuth);
@@ -17,12 +18,20 @@ casesRouter.get('/', async (_req, res) => {
 
 // POST /api/cases/:id/decision - ¿procede evaluar? (alertas/denuncias, D03/D09)
 casesRouter.post('/:id/decision', async (req: AuthedRequest, res) => {
+  const idCheck = z.string().uuid().safeParse(req.params.id);
+
+  if (!idCheck.success) {
+    return res.status(422).json({ error: 'id_invalido' });
+  }
+
+  const id = idCheck.data;
+
   const parsed = DecisionOrigenInput.safeParse(req.body);
   if (!parsed.success) {
     return res.status(422).json({ error: 'datos_invalidos', detalle: parsed.error.flatten() });
   }
 
-  const caso = await prisma.caso.findUnique({ where: { id: req.params.id } });
+  const caso = await prisma.caso.findUnique({ where: { id } });
   if (!caso) return res.status(404).json({ error: 'no_encontrado' });
 
   const nuevoEstado = parsed.data.procede ? 'pendiente_asignacion' : 'cancelado';
@@ -49,12 +58,20 @@ casesRouter.post('/:id/decision', async (req: AuthedRequest, res) => {
 
 // POST /api/cases/:id/assignments - asignar técnico y cita (valida versión y solapamiento)
 casesRouter.post('/:id/assignments', async (req: AuthedRequest, res) => {
+  const idCheck = z.string().uuid().safeParse(req.params.id);
+
+  if (!idCheck.success) {
+    return res.status(422).json({ error: 'id_invalido' });
+  }
+
+  const id = idCheck.data;
+  
   const parsed = CrearAsignacionInput.safeParse(req.body);
   if (!parsed.success) {
     return res.status(422).json({ error: 'datos_invalidos', detalle: parsed.error.flatten() });
   }
 
-  const caso = await prisma.caso.findUnique({ where: { id: req.params.id } });
+  const caso = await prisma.caso.findUnique({ where: { id } });
   if (!caso) return res.status(404).json({ error: 'no_encontrado' });
 
   // Detectar solapamiento de horario para el mismo evaluador (inicio/fin, ver "Acuerdos comunes").
@@ -103,14 +120,27 @@ casesRouter.post('/:id/assignments', async (req: AuthedRequest, res) => {
 
 // POST /api/cases/:id/assignments/:assignmentId/cancel
 casesRouter.post('/:id/assignments/:assignmentId/cancel', async (req: AuthedRequest, res) => {
+  const assignmentIdCheck = z.string().uuid().safeParse(
+    req.params.assignmentId,
+  );
+
+  if (!assignmentIdCheck.success) {
+    return res.status(422).json({ error: 'id_invalido' });
+  }
+
+  const assignmentId = assignmentIdCheck.data;
+
   const parsed = CancelarAsignacionInput.safeParse(req.body);
   if (!parsed.success) {
     return res.status(422).json({ error: 'datos_invalidos' });
   }
 
   const asignacion = await prisma.asignacion.update({
-    where: { id: req.params.assignmentId },
-    data: { estado: 'cancelada', motivoCambio: parsed.data.motivo },
+    where: { id: assignmentId },
+    data: {
+      estado: 'cancelada',
+      motivoCambio: parsed.data.motivo,
+    },
   });
   res.json(asignacion);
 });
