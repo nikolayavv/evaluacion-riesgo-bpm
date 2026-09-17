@@ -120,6 +120,14 @@ casesRouter.post('/:id/assignments', async (req: AuthedRequest, res) => {
 
 // POST /api/cases/:id/assignments/:assignmentId/cancel
 casesRouter.post('/:id/assignments/:assignmentId/cancel', async (req: AuthedRequest, res) => {
+  const idCheck = z.string().uuid().safeParse(req.params.id);
+
+  if (!idCheck.success) {
+    return res.status(422).json({ error: 'id_invalido' });
+  }
+
+  const casoId = idCheck.data;
+
   const assignmentIdCheck = z.string().uuid().safeParse(
     req.params.assignmentId,
   );
@@ -135,8 +143,19 @@ casesRouter.post('/:id/assignments/:assignmentId/cancel', async (req: AuthedRequ
     return res.status(422).json({ error: 'datos_invalidos' });
   }
 
+  const existente = await prisma.asignacion.findFirst({
+    where: {
+      id: assignmentId,
+      casoId,
+    },
+  });
+
+  if (!existente) {
+    return res.status(404).json({ error: 'no_encontrado' });
+  }
+
   const asignacion = await prisma.asignacion.update({
-    where: { id: assignmentId },
+    where: { id: assignmentId, casoId },
     data: {
       estado: 'cancelada',
       motivoCambio: parsed.data.motivo,
